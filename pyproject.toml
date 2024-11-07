@@ -26,7 +26,7 @@ dependencies = [
 "Bug Tracker" = "https://github.com/vanna-ai/vanna/issues"
 
 [project.optional-dependencies]
-ssh_tunneling = ["paramiko", "sshtunnel"]
+ssh_tunneling = ["paramiko", "sshtunnel", "PyMySQL"]
 postgres = ["psycopg2-binary", "db-dtypes"]
 mysql = ["PyMySQL"]
 clickhouse = ["clickhouse_connect"]

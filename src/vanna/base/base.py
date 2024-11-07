@@ -64,7 +64,6 @@ import plotly.express as px
 import plotly.graph_objects as go
 import requests
 import sqlparse
-from pymysql import connect as pymysql_connect
 from typing import Union
 
 from ..exceptions import DependencyError, ImproperlyConfigured, ValidationError
@@ -1044,6 +1043,7 @@ class VannaBase(ABC):
         # Verify required parameters for SSH tunneling
         if use_ssh_tunnel:
             try:
+                from pymysql import connect as pymysql_connect
                 import paramiko
                 from sshtunnel import SSHTunnelForwarder
             except ImportError:
