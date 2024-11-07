@@ -56,6 +56,7 @@ import traceback
 from abc import ABC, abstractmethod
 from typing import List, Tuple, Union
 from urllib.parse import urlparse
+import warnings
 
 import pandas as pd
 import plotly
@@ -63,6 +64,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import requests
 import sqlparse
+from typing import Union
 
 from ..exceptions import DependencyError, ImproperlyConfigured, ValidationError
 from ..types import TrainingPlan, TrainingPlanItem
@@ -992,6 +994,11 @@ class VannaBase(ABC):
         user: str = None,
         password: str = None,
         port: int = None,
+        use_ssh_tunnel: bool = False,  # New parameter to toggle SSH tunneling
+        ssh_host: str = None,
+        ssh_port: int = 22,
+        ssh_user: str = None,
+        pem_path: str = None,
         **kwargs
     ):
 
@@ -1033,18 +1040,57 @@ class VannaBase(ABC):
         if not port:
             raise ImproperlyConfigured("Please set your MySQL port")
 
+        # Verify required parameters for SSH tunneling
+        if use_ssh_tunnel:
+            try:
+                from pymysql import connect as pymysql_connect
+                import paramiko
+                from sshtunnel import SSHTunnelForwarder
+            except ImportError:
+                warnings.warn(
+                    "SSH tunneling dependencies are not installed. "
+                    "To enable SSH tunneling, install with: pip install .[ssh_tunneling]"
+                )
+                return  # Or handle the absence of SSH in an alternative way
+            
+            if not ssh_host or not ssh_user or not pem_path:
+                raise ImproperlyConfigured("Please set ssh_host, ssh_user, and pem_path for SSH tunneling.")
+        
         conn = None
+        tunnel = None
 
         try:
-            conn = pymysql.connect(
-                host=host,
-                user=user,
-                password=password,
-                database=dbname,
-                port=port,
-                cursorclass=pymysql.cursors.DictCursor,
-                **kwargs
-            )
+            if use_ssh_tunnel:
+                
+                # Set up the SSH tunnel to the private MySQL database
+                mykey = paramiko.RSAKey.from_private_key_file(pem_path)
+                tunnel = SSHTunnelForwarder(
+                    (ssh_host, ssh_port),
+                    ssh_username=ssh_user,
+                    ssh_pkey=mykey,
+                    remote_bind_address=(host, port)
+                )
+                tunnel.start()
+                local_port = tunnel.local_bind_port
+                conn = pymysql_connect(
+                    host='127.0.0.1',
+                    user=user,
+                    password=password,
+                    database=dbname,
+                    port=local_port,
+                    cursorclass=pymysql.cursors.DictCursor,
+                    **kwargs
+                )
+            else:
+                conn = pymysql.connect(
+                    host=host,
+                    user=user,
+                    password=password,
+                    database=dbname,
+                    port=port,
+                    cursorclass=pymysql.cursors.DictCursor,
+                    **kwargs
+                )
         except pymysql.Error as e:
             raise ValidationError(e)
 
@@ -1069,6 +1115,11 @@ class VannaBase(ABC):
                 except Exception as e:
                     conn.rollback()
                     raise e
+                
+                finally:
+                    if use_ssh_tunnel and tunnel and tunnel.is_active:
+                        tunnel.stop()
+                    conn.close()
 
         self.run_sql_is_set = True
         self.run_sql = run_sql_mysql

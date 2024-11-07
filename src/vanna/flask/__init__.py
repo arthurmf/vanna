@@ -468,6 +468,27 @@ class VannaFlaskAPI:
                 }
             )
 
+        @self.flask_app.route("/api/v0/run_sql_with_constraint", methods=["GET"])
+        @self.requires_auth
+        @self.requires_cache(["sql"])
+        def run_sql_with_constraint(id: str, sql: str):
+            user_id = request.args.get("user_id")
+            if not user_id:
+                return jsonify({"error": "user_id is required for this endpoint"}), 400
+
+            # Enforce the customer_id constraint using user_id
+            sql_with_constraint = vn.append_customer_constraint(sql, customer_id=user_id)
+            df = vn.run_sql(sql_with_constraint)
+            self.cache.set(id=id, field="df", value=df)
+            return jsonify(
+                    {
+                        "type": "df",
+                        "id": id,
+                        "df": df.head(10).to_json(orient='records', date_format='iso'),
+                        "should_generate_chart": self.chart and vn.should_generate_chart(df),
+                    }
+                )
+        
         @self.flask_app.route("/api/v0/run_sql", methods=["GET"])
         @self.requires_auth
         @self.requires_cache(["sql"])
