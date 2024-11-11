@@ -999,6 +999,8 @@ class VannaBase(ABC):
         ssh_port: int = 22,
         ssh_user: str = None,
         pem_path: str = None,
+        ssh_tunnel=None,
+        connection=None,
         **kwargs
     ):
 
@@ -1040,40 +1042,40 @@ class VannaBase(ABC):
         if not port:
             raise ImproperlyConfigured("Please set your MySQL port")
 
-        # Verify required parameters for SSH tunneling
-        if use_ssh_tunnel:
-            try:
-                from pymysql import connect as pymysql_connect
-                import paramiko
-                from sshtunnel import SSHTunnelForwarder
-            except ImportError:
-                warnings.warn(
-                    "SSH tunneling dependencies are not installed. "
-                    "To enable SSH tunneling, install with: pip install .[ssh_tunneling]"
-                )
-                return  # Or handle the absence of SSH in an alternative way
-            
-            if not ssh_host or not ssh_user or not pem_path:
-                raise ImproperlyConfigured("Please set ssh_host, ssh_user, and pem_path for SSH tunneling.")
-        
-        conn = None
-        tunnel = None
+        # Set up SSH tunnel if needed and not already open
+        self.ssh_tunnel = ssh_tunnel
+        self.connection = connection
 
         try:
-            if use_ssh_tunnel:
+            if use_ssh_tunnel and ssh_tunnel is None:
+                try:
+                    import paramiko
+                    from sshtunnel import SSHTunnelForwarder
+                except ImportError:
+                    warnings.warn(
+                        "SSH tunneling dependencies are not installed. "
+                        "To enable SSH tunneling, install with: pip install .[ssh_tunneling]"
+                    )
+                    return  # Or handle the absence of SSH in an alternative way
                 
-                # Set up the SSH tunnel to the private MySQL database
+                if not ssh_host or not ssh_user or not pem_path:
+                    raise ImproperlyConfigured("Please set ssh_host, ssh_user, and pem_path for SSH tunneling.")
+                
                 mykey = paramiko.RSAKey.from_private_key_file(pem_path)
-                tunnel = SSHTunnelForwarder(
+                self.ssh_tunnel = SSHTunnelForwarder(
                     (ssh_host, ssh_port),
                     ssh_username=ssh_user,
                     ssh_pkey=mykey,
                     remote_bind_address=(host, port)
                 )
-                tunnel.start()
-                local_port = tunnel.local_bind_port
-                conn = pymysql_connect(
-                    host='127.0.0.1',
+                self.ssh_tunnel.start()
+                local_port = self.ssh_tunnel.local_bind_port
+            else:
+                local_port = port
+
+            if connection is None:
+                self.connection = pymysql.connect(
+                    host='127.0.0.1' if use_ssh_tunnel else host,
                     user=user,
                     password=password,
                     database=dbname,
@@ -1081,46 +1083,23 @@ class VannaBase(ABC):
                     cursorclass=pymysql.cursors.DictCursor,
                     **kwargs
                 )
-            else:
-                conn = pymysql.connect(
-                    host=host,
-                    user=user,
-                    password=password,
-                    database=dbname,
-                    port=port,
-                    cursorclass=pymysql.cursors.DictCursor,
-                    **kwargs
-                )
+
         except pymysql.Error as e:
-            raise ValidationError(e)
+            raise ValidationError(e)                
 
         def run_sql_mysql(sql: str) -> Union[pd.DataFrame, None]:
-            if conn:
-                try:
-                    conn.ping(reconnect=True)
-                    cs = conn.cursor()
+            
+            try:
+                with self.connection.cursor() as cs:
                     cs.execute(sql)
                     results = cs.fetchall()
-
-                    # Create a pandas dataframe from the results
-                    df = pd.DataFrame(
-                        results, columns=[desc[0] for desc in cs.description]
-                    )
-                    return df
-
-                except pymysql.Error as e:
-                    conn.rollback()
-                    raise ValidationError(e)
-
-                except Exception as e:
-                    conn.rollback()
-                    raise e
+                    df = pd.DataFrame(results, columns=[desc[0] for desc in cs.description])
+                return df
+            
+            except Exception as e:
+                self.connection.rollback()
+                raise e
                 
-                finally:
-                    if use_ssh_tunnel and tunnel and tunnel.is_active:
-                        tunnel.stop()
-                    conn.close()
-
         self.run_sql_is_set = True
         self.run_sql = run_sql_mysql
 
