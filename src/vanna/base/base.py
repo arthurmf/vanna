@@ -1001,7 +1001,6 @@ class VannaBase(ABC):
         pem_path: str = None,
         ssh_tunnel=None,
         connection=None,
-        autocommit: bool = False,
         **kwargs
     ):
 
@@ -1085,17 +1084,6 @@ class VannaBase(ABC):
                     **kwargs
                 )
 
-
-            conn = pymysql.connect(
-                host=host,
-                user=user,
-                password=password,
-                database=dbname,
-                port=port,
-                cursorclass=pymysql.cursors.DictCursor,
-                autocommit=autocommit,
-                **kwargs
-            )
         except pymysql.Error as e:
             raise ValidationError(e)                
 
@@ -1121,7 +1109,7 @@ class VannaBase(ABC):
         dbname: str = None,
         user: str = None,
         password: str = None,
-        port: int = None,        
+        port: int = None,
         **kwargs
     ):
 
