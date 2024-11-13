@@ -471,7 +471,7 @@ class VannaFlaskAPI:
         @self.flask_app.route("/api/v0/run_sql_with_constraint", methods=["GET"])
         @self.requires_auth
         @self.requires_cache(["sql"])
-        def run_sql_with_constraint(id: str, sql: str):
+        def run_sql_with_constraint(user: any, id: str, sql: str):
             user_id = request.args.get("user_id")
             if not user_id:
                 return jsonify({"error": "user_id is required for this endpoint"}), 400
