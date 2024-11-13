@@ -1001,6 +1001,7 @@ class VannaBase(ABC):
         pem_path: str = None,
         ssh_tunnel=None,
         connection=None,
+        autocommit: bool = False,
         **kwargs
     ):
 
@@ -1081,11 +1082,12 @@ class VannaBase(ABC):
                     database=dbname,
                     port=local_port,
                     cursorclass=pymysql.cursors.DictCursor,
+                    autocommit=autocommit,
                     **kwargs
                 )
 
         except pymysql.Error as e:
-            raise ValidationError(e)                
+            raise ValidationError(e)
 
         def run_sql_mysql(sql: str) -> Union[pd.DataFrame, None]:
             
