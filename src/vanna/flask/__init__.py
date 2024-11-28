@@ -177,6 +177,7 @@ class VannaFlaskAPI:
         self.cache = cache
         self.user_caches = {}
         self.chat = chat
+        self.MAX_QUESTION_HISTORY = os.environ.get("MAX_QUESTION_HISTORY", 10)
         self.debug = debug
         self.allow_llm_to_see_data = allow_llm_to_see_data
         self.chart = chart
@@ -349,6 +350,9 @@ class VannaFlaskAPI:
                 previous_questions = [
                     item["question"] for item in user_cache.get_all(["question"])
                     ]
+                
+                # Only store the last MAX_QUESTION_HISTORY questions
+                previous_questions = previous_questions[-self.MAX_QUESTION_HISTORY:]
                 
                 if self.debug:
                     print(f"Previous questions: {previous_questions}")
