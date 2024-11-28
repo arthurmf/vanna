@@ -147,6 +147,7 @@ class VannaFlaskAPI:
         debug=True,
         allow_llm_to_see_data=False,
         chart=True,
+        chat: bool = False, # Include chat option
     ):
         """
         Expose a Flask API that can be used to interact with a Vanna instance.
@@ -158,10 +159,11 @@ class VannaFlaskAPI:
             debug: Show the debug console. Defaults to True.
             allow_llm_to_see_data: Whether to allow the LLM to see data. Defaults to False.
             chart: Whether to show the chart output in the UI. Defaults to True.
+            chat: Whether to include chat functionality. Defaults to False.
 
         Returns:
             None
-        """
+        """                    
 
         self.flask_app = Flask(__name__)
 
@@ -173,6 +175,8 @@ class VannaFlaskAPI:
         self.vn = vn
         self.auth = auth
         self.cache = cache
+        self.user_caches = {}
+        self.chat = chat
         self.debug = debug
         self.allow_llm_to_see_data = allow_llm_to_see_data
         self.chart = chart
@@ -329,10 +333,27 @@ class VannaFlaskAPI:
             question = flask.request.args.get("question")
 
             if question is None:
-                return jsonify({"type": "error", "error": "No question provided"})
-
+                return jsonify({"type": "error", "error": "No question provided"})            
+            
             id = self.cache.generate_id(question=question)
-            sql = vn.generate_sql(question=question, allow_llm_to_see_data=self.allow_llm_to_see_data)
+            
+            # If chat is enabled, store the question in the user-specific cache
+            previous_questions = []
+            if self.chat:
+                user_id = request.args.get("user_id")
+                if not user_id:
+                    return jsonify({"error": "user_id is required for chat feature"}), 400
+                
+                user_cache = self.get_user_cache(user_id)  # Retrieve user-specific cache
+                user_cache.set(id=id, field="question", value=question)
+                previous_questions = [
+                    item["question"] for item in user_cache.get_all(["question"])
+                    ]
+                
+                if self.debug:
+                    print(f"Previous questions: {previous_questions}")
+
+            sql = vn.generate_sql(question=question, allow_llm_to_see_data=self.allow_llm_to_see_data, previous_questions=previous_questions)
 
             self.cache.set(id=id, field="question", value=question)
             self.cache.set(id=id, field="sql", value=sql)
@@ -1156,6 +1177,14 @@ class VannaFlaskAPI:
                 finally:
                     self.ws_clients.remove(ws)
 
+    def get_user_cache(self, user_id: str) -> Cache:
+        """
+        Retrieve or initialize the cache for a specific user.
+        """
+        if user_id not in self.user_caches:
+            self.user_caches[user_id] = MemoryCache()  # Initialize user-specific cache
+        return self.user_caches[user_id]
+
     def run(self, *args, **kwargs):
         """
         Run the Flask app.
@@ -1211,6 +1240,7 @@ class VannaFlaskApp(VannaFlaskAPI):
         function_generation=True,
         index_html_path=None,
         assets_folder=None,
+        chat: bool = False,
     ):
         """
         Expose a Flask app that can be used to interact with a Vanna instance.
@@ -1237,11 +1267,12 @@ class VannaFlaskApp(VannaFlaskAPI):
             summarization: Whether to show summarization. Defaults to True.
             index_html_path: Path to the index.html. Defaults to None, which will use the default index.html
             assets_folder: The location where you'd like to serve the static assets from. Defaults to None, which will use hardcoded Python variables.
+            chat: Whether to include Chat functionality. Defaults to False.
 
         Returns:
             None
         """
-        super().__init__(vn, cache, auth, debug, allow_llm_to_see_data, chart)
+        super().__init__(vn, cache, auth, debug, allow_llm_to_see_data, chart, chat)
 
         self.config["logo"] = logo
         self.config["title"] = title

@@ -119,6 +119,9 @@ class VannaBase(ABC):
         Returns:
             str: The SQL query that answers the question.
         """
+
+        previous_questions = kwargs.get("previous_questions", [])
+
         if self.config is not None:
             initial_prompt = self.config.get("initial_prompt", None)
         else:
@@ -126,6 +129,14 @@ class VannaBase(ABC):
         question_sql_list = self.get_similar_question_sql(question, **kwargs)
         ddl_list = self.get_related_ddl(question, **kwargs)
         doc_list = self.get_related_documentation(question, **kwargs)
+
+        # Integrate previous questions into the SQL prompt
+        if previous_questions:
+            previous_context = "\n".join(
+                [f"Previous Question: {q}" for q in previous_questions]
+            )
+            doc_list.append(f"The following are previous questions asked by the user:\n{previous_context}")
+
         prompt = self.get_sql_prompt(
             initial_prompt=initial_prompt,
             question=question,
