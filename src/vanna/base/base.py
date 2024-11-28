@@ -120,23 +120,17 @@ class VannaBase(ABC):
             str: The SQL query that answers the question.
         """
 
-        previous_questions = kwargs.get("previous_questions", [])
+        question_sql_history = kwargs.get("question_sql_history", [])
 
         if self.config is not None:
             initial_prompt = self.config.get("initial_prompt", None)
         else:
             initial_prompt = None
+
         question_sql_list = self.get_similar_question_sql(question, **kwargs)
         ddl_list = self.get_related_ddl(question, **kwargs)
-        doc_list = self.get_related_documentation(question, **kwargs)
-
-        # Integrate previous questions into the SQL prompt
-        if previous_questions:
-            previous_context = "\n".join(
-                [f"Previous Question: {q}" for q in previous_questions]
-            )
-            doc_list.append(f"The following are previous questions asked by the user:\n{previous_context}")
-
+        doc_list = self.get_related_documentation(question, **kwargs)        
+        
         prompt = self.get_sql_prompt(
             initial_prompt=initial_prompt,
             question=question,
@@ -526,7 +520,7 @@ class VannaBase(ABC):
                     initial_prompt += f"{ddl}\n\n"
 
         return initial_prompt
-
+    
     def add_documentation_to_prompt(
         self,
         initial_prompt: str,
@@ -613,11 +607,16 @@ class VannaBase(ABC):
         initial_prompt += (
             "===Response Guidelines \n"
             "1. If the provided context is sufficient, please generate a valid SQL query without any explanations for the question. \n"
-            "2. If the provided context is almost sufficient but requires knowledge of a specific string in a particular column, please generate an intermediate SQL query to find the distinct strings in that column. Prepend the query with a comment saying intermediate_sql \n"
+            "2. If the provided context is almost sufficient but requires knowledge of a specific string in a particular column, please generate an intermediate SQL query to find the distinct strings in that column. Prepend the query with a comment saying intermediate_sql. \n"
             "3. If the provided context is insufficient, please explain why it can't be generated. \n"
-            "4. Please use the most relevant table(s). \n"
-            "5. If the question has been asked and answered before, please repeat the answer exactly as it was given before. \n"
-            f"6. Ensure that the output SQL is {self.dialect}-compliant and executable, and free of syntax errors. \n"
+            "4. Use the 'Previous Questions Context' to resolve ambiguity or infer missing details in the current question. For example:\n"
+            "   - If the current question refers to 'this' or 'that,' resolve it based on the last question.\n"
+            "   - If the current question logically follows the last question, generate the SQL for the combined intent. \n"
+            "5. Prioritize 'Previous Questions Context' over retrieved similar questions/SQL pairs when there is any ambiguity or when the current question explicitly builds on the previous question. \n"
+            "6. Use retrieved similar questions/SQL pairs only when they are more relevant and explicitly match the current question without requiring inference from 'Previous Questions Context.' \n"
+            "7. Please use the most relevant table(s). \n"
+            "8. If the question has been asked and answered before, please repeat the answer exactly as it was given before. \n"
+            f"9. Ensure that the output SQL is {self.dialect}-compliant and executable, and free of syntax errors. \n"
         )
 
         message_log = [self.system_message(initial_prompt)]
@@ -629,6 +628,14 @@ class VannaBase(ABC):
                 if example is not None and "question" in example and "sql" in example:
                     message_log.append(self.user_message(example["question"]))
                     message_log.append(self.assistant_message(example["sql"]))
+
+        # Add the user's previous pairs of questions and sql to the prompt
+        question_sql_history = kwargs.get("question_sql_history", [])
+        if question_sql_history:
+            for p_question, p_sql in question_sql_history:
+                if p_question is not None and p_sql is not None:
+                    message_log.append(self.user_message(p_question))
+                    message_log.append(self.assistant_message(p_sql))
 
         message_log.append(self.user_message(question))
 

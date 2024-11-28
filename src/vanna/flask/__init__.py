@@ -339,25 +339,30 @@ class VannaFlaskAPI:
             id = self.cache.generate_id(question=question)
             
             # If chat is enabled, store the question in the user-specific cache
-            previous_questions = []
+            question_sql_history = []
             if self.chat:
                 user_id = request.args.get("user_id")
                 if not user_id:
                     return jsonify({"error": "user_id is required for chat feature"}), 400
                 
                 user_cache = self.get_user_cache(user_id)  # Retrieve user-specific cache
-                user_cache.set(id=id, field="question", value=question)
-                previous_questions = [
-                    item["question"] for item in user_cache.get_all(["question"])
-                    ]
+                
+                # Get all previous questions and SQLs from the user-specific cache
+                question_sql_history = [
+                    (item["question"], item["sql"]) 
+                    for item in user_cache.get_all(["id", "question", "sql"]) 
+                    if item["question"] is not None and item["sql"] is not None
+                ]
                 
                 # Only store the last MAX_QUESTION_HISTORY questions
-                previous_questions = previous_questions[-self.MAX_QUESTION_HISTORY:]
-                
-                if self.debug:
-                    print(f"Previous questions: {previous_questions}")
+                if len(question_sql_history) > self.MAX_QUESTION_HISTORY:
+                    question_sql_history = question_sql_history[-self.MAX_QUESTION_HISTORY:]
 
-            sql = vn.generate_sql(question=question, allow_llm_to_see_data=self.allow_llm_to_see_data, previous_questions=previous_questions)
+                user_cache.set(id=id, field="question", value=question)                
+
+            sql = vn.generate_sql(question=question, allow_llm_to_see_data=self.allow_llm_to_see_data, question_sql_history=question_sql_history)
+            if self.chat:
+                user_cache.set(id=id, field="sql", value=sql)
 
             self.cache.set(id=id, field="question", value=question)
             self.cache.set(id=id, field="sql", value=sql)
