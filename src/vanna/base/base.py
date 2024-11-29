@@ -607,16 +607,11 @@ class VannaBase(ABC):
         initial_prompt += (
             "===Response Guidelines \n"
             "1. If the provided context is sufficient, please generate a valid SQL query without any explanations for the question. \n"
-            "2. If the provided context is almost sufficient but requires knowledge of a specific string in a particular column, please generate an intermediate SQL query to find the distinct strings in that column. Prepend the query with a comment saying intermediate_sql. \n"
+            "2. If the provided context is almost sufficient but requires knowledge of a specific string in a particular column, please generate an intermediate SQL query to find the distinct strings in that column. Prepend the query with a comment saying intermediate_sql \n"
             "3. If the provided context is insufficient, please explain why it can't be generated. \n"
-            "4. Use the 'Previous Questions Context' to resolve ambiguity or infer missing details in the current question. For example:\n"
-            "   - If the current question refers to 'this' or 'that,' resolve it based on the last question.\n"
-            "   - If the current question logically follows the last question, generate the SQL for the combined intent. \n"
-            "5. Prioritize 'Previous Questions Context' over retrieved similar questions/SQL pairs when there is any ambiguity or when the current question explicitly builds on the previous question. \n"
-            "6. Use retrieved similar questions/SQL pairs only when they are more relevant and explicitly match the current question without requiring inference from 'Previous Questions Context.' \n"
-            "7. Please use the most relevant table(s). \n"
-            "8. If the question has been asked and answered before, please repeat the answer exactly as it was given before. \n"
-            f"9. Ensure that the output SQL is {self.dialect}-compliant and executable, and free of syntax errors. \n"
+            "4. Please use the most relevant table(s). \n"
+            "5. If the question has been asked and answered before, please repeat the answer exactly as it was given before. \n"
+            f"6. Ensure that the output SQL is {self.dialect}-compliant and executable, and free of syntax errors. \n"
         )
 
         message_log = [self.system_message(initial_prompt)]
