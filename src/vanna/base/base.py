@@ -1089,11 +1089,11 @@ class VannaBase(ABC):
         except pymysql.Error as e:
             raise ValidationError(e)
 
-        def run_sql_mysql(sql: str) -> Union[pd.DataFrame, None]:
+        def run_sql_mysql(sql: str, params: tuple = ()) -> Union[pd.DataFrame, None]:
             
             try:
                 with self.connection.cursor() as cs:
-                    cs.execute(sql)
+                    cs.execute(sql, params)
                     results = cs.fetchall()
                     df = pd.DataFrame(results, columns=[desc[0] for desc in cs.description])
                 return df

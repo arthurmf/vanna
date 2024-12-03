@@ -468,6 +468,32 @@ class VannaFlaskAPI:
                 }
             )
 
+        @self.flask_app.route("/api/v0/generate_user_tmp_table", methods=["GET"])
+        @self.requires_auth
+        @self.requires_cache(["sql"])
+        def generate_user_tmp_table(user: any, id: str, sql: str):
+            user_id = request.args.get("user_id")
+            if not user_id:
+                return jsonify({"error": "user_id is required for this endpoint"}), 400
+            
+            # Drop the existing temporary table if it exists
+            drop_sql = "DROP TEMPORARY TABLE IF EXISTS card_transactions_%s"
+            vn.run_sql(drop_sql, (user_id))
+
+            # Create the new temporary table
+            create_sql = """
+              CREATE TEMPORARY TABLE card_transactions_%s AS
+              SELECT * FROM card_transactions WHERE customer_id = %s
+            """
+            vn.run_sql(create_sql, (user_id, user_id))
+                        
+            return jsonify(
+                    {
+                        "type": "df",
+                        "id": id,
+                    }
+                )
+        
         @self.flask_app.route("/api/v0/run_sql_with_constraint", methods=["GET"])
         @self.requires_auth
         @self.requires_cache(["sql"])
